@@ -23,6 +23,7 @@ from collections import defaultdict
 from prjxray import fasm_assembler, util
 from prjxray.db import Database
 from prjxray.roi import Roi
+from prjxray.grid_types import BlockType
 
 import sys
 
@@ -263,6 +264,31 @@ def fasm2frames(db_root,
         if missing_features:
             raise fasm_assembler.FasmLookupError('\n'.join(missing_features))
 
+    list_of_frames = list(assembler.frames_in_use)
+    list_of_frames.sort()
+
+    # Find CLB_IO_CLK/BRAM address ranges
+    clb_io_clk_list = list()
+    bram_list = list()
+    for addr in list_of_frames:
+        for info in assembler.grid.tileinfo.items():
+            block_types = info[1].bits.keys()
+            if BlockType.CLB_IO_CLK in block_types:
+                bits = info[1].bits[BlockType.CLB_IO_CLK]
+                if addr in range(bits.base_address,
+                                 bits.base_address + bits.frames):
+                    clb_io_clk_list.append(addr)
+            if BlockType.BLOCK_RAM in block_types:
+                bits = info[1].bits[BlockType.BLOCK_RAM]
+                if addr in range(bits.base_address,
+                                 bits.base_address + bits.frames):
+                    bram_list.append(addr)
+
+    clb_start_address  = clb_io_clk_list[0] if clb_io_clk_list else None
+    clb_end_address    = clb_io_clk_list[-1] if clb_io_clk_list else None
+    bram_start_address = bram_list[0] if bram_list  else None
+    bram_end_address   = bram_list[-1] if bram_list else None
+
     frames = assembler.get_frames(sparse=sparse)
 
     if debug:
@@ -271,7 +297,11 @@ def fasm2frames(db_root,
     if f_out is not None:
         dump_frm(f_out, frames)
 
-    return frames
+    return (frames,
+            clb_start_address,
+            clb_end_address,
+            bram_start_address,
+            bram_end_address)
 
 
 def main():

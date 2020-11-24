@@ -44,6 +44,8 @@ def main():
     parser.add_argument('--bit_out', help='Output FPGA bitstream (.bit) file')
     parser.add_argument(
         '--frm_out', default=None, help='Output FPGA frame (.frm) file')
+    parser.add_argument(
+        '--partial_bitstream', action="store_true", help='Generate partial bitstream')
 
     args = parser.parse_args()
 
@@ -51,7 +53,14 @@ def main():
     if frm_out is None:
         _, frm_out = tempfile.mkstemp()
 
+    emit_pudc_b_pullup = args.emit_pudc_b_pullup and not args.partial_bitstream
+
     f_out = open(frm_out, 'w')
+    frames, \
+    clb_start_addr, \
+    clb_end_addr, \
+    bram_start_addr, \
+    bram_end_addr = \
     fasm2frames(
         db_root=args.db_root,
         part=args.part,
@@ -60,13 +69,26 @@ def main():
         sparse=args.sparse,
         roi=args.roi,
         debug=args.debug,
-        emit_pudc_b_pullup=args.emit_pudc_b_pullup)
+        emit_pudc_b_pullup=emit_pudc_b_pullup)
     f_out.close()
 
-    result = subprocess.check_output(
-        "{} --frm_file {} --output_file {} --part_name {} --part_file {}".
-        format(args.frm2bit, frm_out, args.bit_out, args.part, args.part_file),
-        shell=True)
+    frm2bit_args = "{} --frm_file {} --output_file {} --part_name {}" \
+                   " --part_file {}".format(args.frm2bit, frm_out,
+                                           args.bit_out, args.part,
+                                           args.part_file)
+
+    if args.partial_bitstream:
+        clb_io_clk_blocks = clb_start_addr is not None and clb_end_addr is not None
+        bram_blocks = bram_start_addr is not None and bram_end_addr is not None
+        frm2bit_args += " --partial_bitstream"
+        if clb_io_clk_blocks:
+            frm2bit_args += " --clb_start_addr {}".format(clb_start_addr)
+            frm2bit_args += " --clb_end_addr {}".format(clb_end_addr)
+        if bram_blocks:
+            frm2bit_args += " --bram_start_addr {}".format(bram_start_addr)
+            frm2bit_args += " --bram_end_addr {}".format(bram_end_addr)
+
+    result = subprocess.check_output(frm2bit_args, shell=True)
 
 
 if __name__ == '__main__':
